@@ -89,7 +89,7 @@ int main(void)
 					time_t eczas = epoch+*((uint32_t*)raw_timestamp);
 
 					//print decoded time
-					printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d\n",
+					printf(" └ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d\n",
 						localtime(&eczas)->tm_year+1900,
 						localtime(&eczas)->tm_mon+1,
 						localtime(&eczas)->tm_mday,
