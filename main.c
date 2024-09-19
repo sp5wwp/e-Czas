@@ -124,7 +124,7 @@ int main(void)
 		else
 		{
 			skip_cnt++;
-			if(skip_cnt==52*10) //skip 52 samples (3.0-1.92=1.08; 1.08/0.02 is 54, we are adding some margin here)
+			if(skip_cnt==52*10) //skip 52 symbols (3.0-1.92=1.08; 1.08/0.02 is 54, we are adding some margin here)
 			{
 				skip_cnt=0;
 				skip_samples=0;
