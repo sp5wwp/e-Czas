@@ -12,6 +12,7 @@ uint16_t skip_cnt;
 uint8_t raw_packet[12];
 
 uint8_t show_all=0; //show all frames (1) or time sync only (0)
+uint8_t dump_rs=1;	//dump Reed-Solomon symbols?
 const uint8_t scram[5]="\nGUM+";
 const uint32_t epoch=946684800; //01-01-2000 00:00:00
 
@@ -66,6 +67,24 @@ int main(void)
 					for(uint8_t i=0; i<12; i++)
 						printf("%02X ", raw_packet[i]);
 					printf("\n");
+
+					//dump RS symbols - WIP
+					if(dump_rs)
+					{
+						printf(" ├ \033[93mRS symbols:\033[39m %d %d %d %d %d %d %d %d %d | %d %d %d %d %d %d\n",
+							(raw_packet[3]>>1)&0xF,
+							((raw_packet[4]>>5)&0x7)|((raw_packet[3]&1)<<3),
+							(raw_packet[4]>>1)&0xF,
+							((raw_packet[5]>>5)&0x7)|((raw_packet[4]&1)<<3),
+							(raw_packet[5]>>1)&0xF,
+							((raw_packet[6]>>5)&0x7)|((raw_packet[5]&1)<<3),
+							(raw_packet[6]>>1)&0xF,
+							((raw_packet[7]>>5)&0x7)|((raw_packet[6]&1)<<3),
+							(raw_packet[7]>>1)&0xF,
+							(raw_packet[8]>>4)&0xF, raw_packet[8]&0xF,
+							(raw_packet[9]>>4)&0xF, raw_packet[9]&0xF,
+							(raw_packet[10]>>4)&0xF, raw_packet[10]&0xF);
+					}
 
 					//descramble contents (raw_packet[] is not raw anymore :)
 					for(uint8_t i=0; i<5; i++) raw_packet[3+i]^=scram[i];
