@@ -101,20 +101,24 @@ int main(void)
 					tmp=raw_timestamp[1]; raw_timestamp[1]=raw_timestamp[2]; raw_timestamp[2]=tmp;
 
 					//convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
+					uint8_t tz=3-((raw_packet[7]>>5)&3);
 					*((uint32_t*)raw_timestamp)*=3;
+					*((uint32_t*)raw_timestamp)+=3600*tz;
 
-					//print the timedtamp
+					//print the timestamp
 					printf(" ├ \033[93mTimestamp:\033[39m %u\n", *((uint32_t*)raw_timestamp));
 					time_t eczas = epoch+*((uint32_t*)raw_timestamp);
 
 					//print decoded time
-					printf(" └ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d\n",
-						localtime(&eczas)->tm_year+1900,
-						localtime(&eczas)->tm_mon+1,
-						localtime(&eczas)->tm_mday,
-						localtime(&eczas)->tm_hour,
-						localtime(&eczas)->tm_min,
-						localtime(&eczas)->tm_sec);
+					printf(" └ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
+						gmtime(&eczas)->tm_year+1900,
+						gmtime(&eczas)->tm_mon+1,
+						gmtime(&eczas)->tm_mday,
+						gmtime(&eczas)->tm_hour,
+						gmtime(&eczas)->tm_min,
+						gmtime(&eczas)->tm_sec,
+						tz);
+					
 				}
 
 				skip_samples=1;
