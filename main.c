@@ -16,6 +16,24 @@ uint8_t dump_rs=1;	//dump Reed-Solomon symbols?
 const uint8_t scram[5]="\nGUM+";
 const uint32_t epoch=946684800; //01-01-2000 00:00:00
 
+uint8_t CRC8(const uint8_t poly, const uint8_t init, const uint8_t *in, const uint16_t len)
+{
+	uint16_t crc=init; //init val
+
+	for(uint16_t i=0; i<len; i++)
+	{
+		crc^=in[i];
+		for(uint8_t j=0; j<8; j++)
+		{
+			crc<<=1;
+			if(crc&0x100)
+				crc=(crc^poly)&0xFF;
+		}
+	}
+
+	return crc&0xFF;
+}
+
 int main(void)
 {
 	while(1)
@@ -68,6 +86,9 @@ int main(void)
 						printf("%02X ", raw_packet[i]);
 					printf("\n");
 
+					//calculate CRC
+					uint8_t calc_crc=CRC8(0x07, 0x00, &raw_packet[3], 5);
+
 					//dump RS symbols - WIP
 					if(dump_rs)
 					{
@@ -110,7 +131,7 @@ int main(void)
 					time_t eczas = epoch+*((uint32_t*)raw_timestamp);
 
 					//print decoded time
-					printf(" └ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
+					printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
 						gmtime(&eczas)->tm_year+1900,
 						gmtime(&eczas)->tm_mon+1,
 						gmtime(&eczas)->tm_mday,
@@ -119,6 +140,12 @@ int main(void)
 						gmtime(&eczas)->tm_sec,
 						tz);
 					
+					//print CRC
+					printf(" └ \033[93mCRC:\033[39m");
+					if(raw_packet[11]==calc_crc)
+						printf(" \033[92mmatch\033[39m\n");
+					else
+						printf(" \033[91mmismatch\033[39m\n");
 				}
 
 				skip_samples=1;
