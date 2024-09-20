@@ -124,7 +124,7 @@ blocks:
     bus_structure: null
     coordinate: [16, 276.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: band_pass_filter_0
   id: band_pass_filter
   parameters:
@@ -268,7 +268,7 @@ blocks:
     bus_structure: null
     coordinate: [172.0, 368]
     rotation: 90
-    state: disabled
+    state: bypassed
 - name: blocks_wavfile_sink_0_0
   id: blocks_wavfile_sink
   parameters:
@@ -308,7 +308,7 @@ blocks:
     bus_structure: null
     coordinate: [24, 516.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: hilbert_fc_0
   id: hilbert_fc
   parameters:

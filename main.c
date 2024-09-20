@@ -101,7 +101,7 @@ int main(void)
 					tmp=raw_timestamp[1]; raw_timestamp[1]=raw_timestamp[2]; raw_timestamp[2]=tmp;
 
 					//convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
-					uint8_t tz=3-((raw_packet[7]>>5)&3);
+					uint8_t tz=((raw_packet[7]>>4)&2)|((raw_packet[7]>>6)&1);
 					*((uint32_t*)raw_timestamp)*=3;
 					*((uint32_t*)raw_timestamp)+=3600*tz;
 
