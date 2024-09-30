@@ -1,0 +1,3 @@
+[submodule "rs-codes"]
+	path = rs-codes
+	url = https://github.com/sp5wwp/rs-codes
