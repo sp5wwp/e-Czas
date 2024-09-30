@@ -4,6 +4,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "rs-codes/rs.h"
+
 const int8_t sync[16]={-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1}; //sync symbol transitions
 int16_t s[12*8*10+1]; //a whole 1.92s frame should fit in (50bps, 10 samples per symbol)
 uint8_t skip_samples;
@@ -11,10 +13,13 @@ uint16_t skip_cnt;
 
 uint8_t raw_packet[12];
 
-uint8_t show_all=0; //show all frames (1) or time sync only (0)
-uint8_t dump_rs=0;	//dump Reed-Solomon symbols?
-const uint8_t scram[5]="\nGUM+";
-const uint32_t epoch=946684800; //01-01-2000 00:00:00
+uint8_t show_all=0;						//show all frames (1) or time sync only (0)
+uint8_t dump_rs=0;						//dump Reed-Solomon symbols?
+const uint8_t scram[5]="\nGUM+";		//scrambler sequence
+const uint32_t epoch=946684800;			//01-01-2000 00:00:00
+const uint8_t rs_poly[5]={1,1,0,0,1};	//RS(15, 9) polynomial, dec=19
+
+rs_t rs;								//RS(15, 9) struct
 
 uint8_t CRC8(const uint8_t poly, const uint8_t init, const uint8_t *in, const uint16_t len)
 {
@@ -53,6 +58,8 @@ int main(int argc, char* argv[])
 			}
 		}
 	}
+
+	init_RS(&rs, 15, 9, (uint8_t*)rs_poly);
 
 	while(1)
 	{
@@ -109,22 +116,42 @@ int main(int argc, char* argv[])
 						//calculate CRC
 						uint8_t calc_crc=CRC8(0x07, 0x00, &raw_packet[3], 5);
 
-						//dump RS symbols - WIP
+						//extract RS(15, 9) codeword
+						uint8_t cword[15]=
+						{
+							(raw_packet[3]>>1)&0xF,
+							((raw_packet[4]>>5)&0x7)|((raw_packet[3]&1)<<3),
+							(raw_packet[4]>>1)&0xF,
+							((raw_packet[5]>>5)&0x7)|((raw_packet[4]&1)<<3),
+							(raw_packet[5]>>1)&0xF,
+							((raw_packet[6]>>5)&0x7)|((raw_packet[5]&1)<<3),
+							(raw_packet[6]>>1)&0xF,
+							((raw_packet[7]>>5)&0x7)|((raw_packet[6]&1)<<3),
+							(raw_packet[7]>>1)&0xF,
+							(raw_packet[8]>>4)&0xF, raw_packet[8]&0xF,
+							(raw_packet[9]>>4)&0xF, raw_packet[9]&0xF,
+							(raw_packet[10]>>4)&0xF, raw_packet[10]&0xF
+						};
+
+						//dump RS symbols
 						if(dump_rs)
 						{
-							printf(" ├ \033[93mRS symbols:\033[39m %d %d %d %d %d %d %d %d %d | %d %d %d %d %d %d\n",
-								(raw_packet[3]>>1)&0xF,
-								((raw_packet[4]>>5)&0x7)|((raw_packet[3]&1)<<3),
-								(raw_packet[4]>>1)&0xF,
-								((raw_packet[5]>>5)&0x7)|((raw_packet[4]&1)<<3),
-								(raw_packet[5]>>1)&0xF,
-								((raw_packet[6]>>5)&0x7)|((raw_packet[5]&1)<<3),
-								(raw_packet[6]>>1)&0xF,
-								((raw_packet[7]>>5)&0x7)|((raw_packet[6]&1)<<3),
-								(raw_packet[7]>>1)&0xF,
-								(raw_packet[8]>>4)&0xF, raw_packet[8]&0xF,
-								(raw_packet[9]>>4)&0xF, raw_packet[9]&0xF,
-								(raw_packet[10]>>4)&0xF, raw_packet[10]&0xF);
+							printf(" ├ \033[93mReceived RS symbols:\033[39m  %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+								cword[0], cword[1], cword[2], cword[3], cword[4],
+								cword[5], cword[6], cword[7], cword[8], cword[9],
+								cword[10], cword[11], cword[12], cword[13], cword[14]);
+						}
+
+						//apply error correction (it overwrites the buffer)
+						decode_RS(&rs, (int8_t*)cword);
+
+						//dump RS symbols again
+						if(dump_rs)
+						{
+							printf(" ├ \033[93mCorrected RS symbols:\033[39m %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+								cword[0], cword[1], cword[2], cword[3], cword[4],
+								cword[5], cword[6], cword[7], cword[8], cword[9],
+								cword[10], cword[11], cword[12], cword[13], cword[14]);
 						}
 
 						//descramble contents (raw_packet[] is not raw anymore :)
