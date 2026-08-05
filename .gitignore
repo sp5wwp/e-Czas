@@ -1,2 +1,4 @@
-e-czas-decode
+e-czas-decode*
 *.py
+*.raw
+.vscode

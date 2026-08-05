@@ -3,11 +3,23 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <locale.h>
 
 #include "rs-codes/rs.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <fcntl.h>
+#include <io.h>
+#endif
+
+#define LARGE_BUF_LEN (12 * 8 * 10) // 12 bytes, 10 samples per bit (symbol)
+
 const int8_t sync[16] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1}; // sync symbol transitions
-int16_t s[12 * 8 * 10 + 1];														  // a whole 1.92s frame should fit in (50bps, 10 samples per symbol)
+
+int16_t s[LARGE_BUF_LEN]; // a whole 1.92s frame should fit in (50bps, 10 samples per symbol)
+uint16_t s_idx;			  // circular buffer index
+int16_t *symbols[16];
 uint8_t skip_samples;
 uint16_t skip_cnt;
 
@@ -45,9 +57,11 @@ uint8_t CRC8(const uint8_t poly, const uint8_t init, const uint8_t *in, const ui
 int main(int argc, char *argv[])
 {
 #ifdef _WIN32
-#include <fcntl.h>
-#include <io.h>
 	_setmode(_fileno(stdin), _O_BINARY);
+	SetConsoleOutputCP(CP_UTF8);
+	setlocale(LC_ALL, ".UTF-8");
+#else
+	setlocale(LC_ALL, "");
 #endif
 
 	if (argc > 1)
@@ -70,9 +84,12 @@ int main(int argc, char *argv[])
 
 	init_RS(&rs, 15, 9, (uint8_t *)rs_poly);
 
+	for (uint8_t i = 0; i < 16; i++)
+		symbols[i] = &s[i * 10];
+
 	while (1)
 	{
-		if (fread(&s[sizeof(s) / sizeof(int16_t) - 1], sizeof(int16_t), 1, stdin) != 1)
+		if (fread(&s[s_idx], sizeof(*s), 1, stdin) != 1)
 		{
 			if (feof(stdin))
 			{
@@ -87,161 +104,174 @@ int main(int argc, char *argv[])
 			}
 			break;
 		}
-
-		// shift left
-		for (uint16_t i = 0; i < sizeof(s) / sizeof(int16_t) - 1; i++)
-			s[i] = s[i + 1];
-
-		if (!skip_samples)
-		{
-			// correlate against syncword
-			int32_t corr = 0;
-			for (uint16_t i = 0; i < 16 * 10; i += 10)
-				corr += s[i] * sync[i / 10];
-
-			if (corr > 200000 && s[0] < -10000) // 10e3 is hardcoded TODO: base this value on std dev
-			{
-				uint8_t b = 1;
-				memset(raw_packet, 0, sizeof(raw_packet));
-
-				for (uint16_t i = 0; i < 96; i++)
-				{
-					if (abs(s[i * 10]) > 10000)
-						b = !b;
-
-					raw_packet[i / 8] |= (b << (7 - (i % 8)));
-				}
-
-				if (show_all || raw_packet[2] == 0x60)
-				{
-					// get local time
-					now = time(NULL);
-					tm_now = localtime(&now);
-
-					// packet has been detected
-					printf("\033[96m[%02d:%02d:%02d] \033[92mPacket received\033[39m\n", tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec);
-
-					// print type
-					printf(" ├ \033[93mType:\033[39m ");
-					if (raw_packet[2] == 0x60)
-						printf("time\n");
-					else
-						printf("other\n");
-
-					if (raw_packet[2] == 0x60)
-					{
-						// print raw contents
-						printf(" ├ \033[93mRaw data:\033[39m ");
-						for (uint8_t i = 0; i < 12; i++)
-							printf("%02X ", raw_packet[i]);
-						printf("\n");
-
-						// calculate CRC
-						uint8_t calc_crc = CRC8(0x07, 0x00, &raw_packet[3], 5);
-
-						// extract RS(15, 9) codeword
-						uint8_t cword[15] =
-							{
-								(raw_packet[3] >> 1) & 0xF,
-								((raw_packet[4] >> 5) & 0x7) | ((raw_packet[3] & 1) << 3),
-								(raw_packet[4] >> 1) & 0xF,
-								((raw_packet[5] >> 5) & 0x7) | ((raw_packet[4] & 1) << 3),
-								(raw_packet[5] >> 1) & 0xF,
-								((raw_packet[6] >> 5) & 0x7) | ((raw_packet[5] & 1) << 3),
-								(raw_packet[6] >> 1) & 0xF,
-								((raw_packet[7] >> 5) & 0x7) | ((raw_packet[6] & 1) << 3),
-								(raw_packet[7] >> 1) & 0xF,
-								(raw_packet[8] >> 4) & 0xF, raw_packet[8] & 0xF,
-								(raw_packet[9] >> 4) & 0xF, raw_packet[9] & 0xF,
-								(raw_packet[10] >> 4) & 0xF, raw_packet[10] & 0xF};
-
-						// dump RS symbols
-						if (dump_rs)
-						{
-							printf(" ├ \033[93mReceived RS symbols:\033[39m  %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
-								   cword[0], cword[1], cword[2], cword[3], cword[4],
-								   cword[5], cword[6], cword[7], cword[8], cword[9],
-								   cword[10], cword[11], cword[12], cword[13], cword[14]);
-						}
-
-						// apply error correction (it overwrites the buffer)
-						decode_RS(&rs, (int8_t *)cword);
-
-						// dump RS symbols again
-						if (dump_rs)
-						{
-							printf(" ├ \033[93mCorrected RS symbols:\033[39m %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
-								   cword[0], cword[1], cword[2], cword[3], cword[4],
-								   cword[5], cword[6], cword[7], cword[8], cword[9],
-								   cword[10], cword[11], cword[12], cword[13], cword[14]);
-						}
-
-						// descramble contents (raw_packet[] is not raw anymore :)
-						for (uint8_t i = 0; i < 5; i++)
-							raw_packet[3 + i] ^= scram[i];
-
-						// extract the 30-bit timestamp into a 4-byte array
-						uint8_t raw_timestamp[4] = {((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7),
-													(raw_packet[4] << 1) | (raw_packet[5] >> 7),
-													(raw_packet[5] << 1) | (raw_packet[6] >> 7),
-													(raw_packet[6] << 1) | (raw_packet[7] >> 7)};
-
-						// endianness swap
-						uint8_t tmp;
-						tmp = raw_timestamp[0];
-						raw_timestamp[0] = raw_timestamp[3];
-						raw_timestamp[3] = tmp;
-						tmp = raw_timestamp[1];
-						raw_timestamp[1] = raw_timestamp[2];
-						raw_timestamp[2] = tmp;
-
-						// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
-						uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
-						*((uint32_t *)raw_timestamp) *= 3;
-						*((uint32_t *)raw_timestamp) += 3600 * tz;
-
-						// print the timestamp
-						printf(" ├ \033[93mTimestamp:\033[39m %u\n", *((uint32_t *)raw_timestamp));
-						time_t eczas = epoch + *((uint32_t *)raw_timestamp);
-
-						// print decoded time
-						printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
-							   gmtime(&eczas)->tm_year + 1900,
-							   gmtime(&eczas)->tm_mon + 1,
-							   gmtime(&eczas)->tm_mday,
-							   gmtime(&eczas)->tm_hour,
-							   gmtime(&eczas)->tm_min,
-							   gmtime(&eczas)->tm_sec,
-							   tz);
-
-						// print CRC
-						printf(" └ \033[93mCRC:\033[39m");
-						if (raw_packet[11] == calc_crc)
-							printf(" \033[92mmatch\033[39m\n");
-						else
-							printf(" \033[91mmismatch\033[39m\n");
-					}
-					else // other packets
-					{
-						// print raw contents
-						printf(" └ \033[93mRaw data:\033[39m ");
-						for (uint8_t i = 0; i < 12; i++)
-							printf("%02X ", raw_packet[i]);
-						printf("\n");
-					}
-				}
-
-				skip_samples = 1;
-				skip_cnt = 0;
-			}
-		}
 		else
 		{
-			skip_cnt++;
-			if (skip_cnt == 52 * 10) // skip 52 symbols (3.0-1.92=1.08; 1.08/0.02 is 54, we are adding some margin here)
+			// advance the circular buffer index
+			s_idx++;
+			if (s_idx >= LARGE_BUF_LEN)
+				s_idx = 0;
+
+			// advance pointers to symbols
+			for (uint8_t i = 0; i < 16; i++)
 			{
-				skip_cnt = 0;
-				skip_samples = 0;
+				if (symbols[i] < &s[LARGE_BUF_LEN - 1])
+					symbols[i]++;
+				else
+					symbols[i] = s;
+			}
+
+			if (!skip_samples)
+			{
+				// correlate against syncword
+				int32_t corr = 0;
+				for (uint16_t i = 0; i < 16; i++)
+					corr += *symbols[i] * sync[i];
+
+				if (corr > 250000 && *symbols[0] < -10000) // 10e3 is hardcoded TODO: base these values on std dev
+				{
+					uint8_t b = 1;
+					memset(raw_packet, 0, sizeof(raw_packet));
+
+					for (uint16_t i = 0; i < 96; i++)
+					{
+						int16_t symb = s[(s_idx + i * 10) % LARGE_BUF_LEN];
+						if (abs(symb) > 10000)
+							b = !b;
+
+						raw_packet[i / 8] |= (b << (7 - (i % 8)));
+					}
+
+					if (show_all || raw_packet[2] == 0x60)
+					{
+						// get local time
+						now = time(NULL);
+						tm_now = localtime(&now);
+
+						// packet has been detected
+						printf("\033[96m[%02d:%02d:%02d] \033[92mPacket received\033[39m\n", tm_now->tm_hour, tm_now->tm_min, tm_now->tm_sec);
+
+						// print type
+						printf(" ├ \033[93mType:\033[39m ");
+						if (raw_packet[2] == 0x60)
+							printf("time\n");
+						else
+							printf("other\n");
+
+						if (raw_packet[2] == 0x60)
+						{
+							// print raw contents
+							printf(" ├ \033[93mRaw data:\033[39m ");
+							for (uint8_t i = 0; i < 12; i++)
+								printf("%02X ", raw_packet[i]);
+							printf("\n");
+
+							// calculate CRC
+							uint8_t calc_crc = CRC8(0x07, 0x00, &raw_packet[3], 5);
+
+							// extract RS(15, 9) codeword
+							uint8_t cword[15] =
+								{
+									(raw_packet[3] >> 1) & 0xF,
+									((raw_packet[4] >> 5) & 0x7) | ((raw_packet[3] & 1) << 3),
+									(raw_packet[4] >> 1) & 0xF,
+									((raw_packet[5] >> 5) & 0x7) | ((raw_packet[4] & 1) << 3),
+									(raw_packet[5] >> 1) & 0xF,
+									((raw_packet[6] >> 5) & 0x7) | ((raw_packet[5] & 1) << 3),
+									(raw_packet[6] >> 1) & 0xF,
+									((raw_packet[7] >> 5) & 0x7) | ((raw_packet[6] & 1) << 3),
+									(raw_packet[7] >> 1) & 0xF,
+									(raw_packet[8] >> 4) & 0xF, raw_packet[8] & 0xF,
+									(raw_packet[9] >> 4) & 0xF, raw_packet[9] & 0xF,
+									(raw_packet[10] >> 4) & 0xF, raw_packet[10] & 0xF};
+
+							// dump RS symbols
+							if (dump_rs)
+							{
+								printf(" ├ \033[93mReceived RS symbols:\033[39m  %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+									   cword[0], cword[1], cword[2], cword[3], cword[4],
+									   cword[5], cword[6], cword[7], cword[8], cword[9],
+									   cword[10], cword[11], cword[12], cword[13], cword[14]);
+							}
+
+							// apply error correction (it overwrites the buffer)
+							decode_RS(&rs, (int8_t *)cword);
+
+							// dump RS symbols again
+							if (dump_rs)
+							{
+								printf(" ├ \033[93mCorrected RS symbols:\033[39m %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+									   cword[0], cword[1], cword[2], cword[3], cword[4],
+									   cword[5], cword[6], cword[7], cword[8], cword[9],
+									   cword[10], cword[11], cword[12], cword[13], cword[14]);
+							}
+
+							// descramble contents (raw_packet[] is not raw anymore :)
+							for (uint8_t i = 0; i < 5; i++)
+								raw_packet[3 + i] ^= scram[i];
+
+							// extract the 30-bit timestamp into a 4-byte array
+							uint8_t raw_timestamp[4] = {((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7),
+														(raw_packet[4] << 1) | (raw_packet[5] >> 7),
+														(raw_packet[5] << 1) | (raw_packet[6] >> 7),
+														(raw_packet[6] << 1) | (raw_packet[7] >> 7)};
+
+							// endianness swap
+							uint8_t tmp;
+							tmp = raw_timestamp[0];
+							raw_timestamp[0] = raw_timestamp[3];
+							raw_timestamp[3] = tmp;
+							tmp = raw_timestamp[1];
+							raw_timestamp[1] = raw_timestamp[2];
+							raw_timestamp[2] = tmp;
+
+							// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
+							uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
+							*((uint32_t *)raw_timestamp) *= 3;
+							*((uint32_t *)raw_timestamp) += 3600 * tz;
+
+							// print the timestamp
+							printf(" ├ \033[93mTimestamp:\033[39m %u\n", *((uint32_t *)raw_timestamp));
+							time_t eczas = epoch + *((uint32_t *)raw_timestamp);
+
+							// print decoded time
+							printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
+								   gmtime(&eczas)->tm_year + 1900,
+								   gmtime(&eczas)->tm_mon + 1,
+								   gmtime(&eczas)->tm_mday,
+								   gmtime(&eczas)->tm_hour,
+								   gmtime(&eczas)->tm_min,
+								   gmtime(&eczas)->tm_sec,
+								   tz);
+
+							// print CRC
+							printf(" └ \033[93mCRC:\033[39m");
+							if (raw_packet[11] == calc_crc)
+								printf(" \033[92mmatch\033[39m\n");
+							else
+								printf(" \033[91mmismatch\033[39m\n");
+						}
+						else // other packets
+						{
+							// print raw contents
+							printf(" └ \033[93mRaw data:\033[39m ");
+							for (uint8_t i = 0; i < 12; i++)
+								printf("%02X ", raw_packet[i]);
+							printf("\n");
+						}
+					}
+
+					skip_samples = 1;
+					skip_cnt = 0;
+				}
+			}
+			else
+			{
+				skip_cnt++;
+				if (skip_cnt == 52 * 10) // skip 52 symbols (3.0-1.92=1.08; 1.08/0.02 is 54, we are adding some margin here)
+				{
+					skip_cnt = 0;
+					skip_samples = 0;
+				}
 			}
 		}
 	}
