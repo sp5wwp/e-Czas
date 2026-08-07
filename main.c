@@ -14,6 +14,7 @@
 #endif
 
 #define LARGE_BUF_LEN (12 * 8 * 10) // 12 bytes, 10 samples per bit (symbol)
+#define TIME_PACKET 0x60
 
 const int8_t sync[16] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1}; // sync symbol transitions
 
@@ -25,8 +26,9 @@ uint16_t skip_cnt;
 
 uint8_t raw_packet[12];
 
-uint8_t show_all = 0;										  // show all frames (1) or time sync only (0)
+uint8_t show_all_types = 0;									  // show all frame types (1) or time sync only (0)
 uint8_t dump_rs = 0;										  // dump Reed-Solomon symbols?
+uint8_t crc_flt = 0;										  // filter out time messages with CRC mismatch?
 const uint8_t scram[5] __attribute__((nonstring)) = "\nGUM+"; // scrambler sequence
 const uint32_t epoch = 946684800;							  // 01-01-2000 00:00:00
 const uint8_t rs_poly[5] = {1, 1, 0, 0, 1};					  // RS(15, 9) polynomial, dec=19
@@ -68,16 +70,22 @@ int main(int argc, char *argv[])
 	{
 		for (uint8_t i = 1; i < argc; i++)
 		{
-			if (strstr(argv[i], "-a"))
+			if (strcmp(argv[i], "-a") == 0)
 			{
-				printf("\033[95mINFO:\033[39m Showing all packets\n");
-				show_all = 1;
+				printf("\033[95mINFO:\033[39m Decoding all packet types\n");
+				show_all_types = 1;
 			}
 
-			else if (strstr(argv[i], "-rs"))
+			else if (strcmp(argv[i], "-rs") == 0)
 			{
 				printf("\033[95mINFO:\033[39m Showing Reed-Solomon code symbols\n");
 				dump_rs = 1;
+			}
+
+			else if (strcmp(argv[i], "-crc") == 0)
+			{
+				printf("\033[95mINFO:\033[39m Showing time packets with correct CRC only\n");
+				crc_flt = 1;
 			}
 		}
 	}
@@ -127,21 +135,35 @@ int main(int argc, char *argv[])
 				for (uint16_t i = 0; i < 16; i++)
 					corr += *symbols[i] * sync[i];
 
-				if (corr > 250000 && *symbols[0] < -10000) // 10e3 is hardcoded TODO: base these values on std dev
+				// hardcoded threshold. TODO: base these values on std dev
+				// detect the syncword, then check if the first symbol is a negative spike
+				if (corr > 80000 && *symbols[0] < -5000)
 				{
+					// demodulate the signal
 					uint8_t b = 1;
 					memset(raw_packet, 0, sizeof(raw_packet));
 
 					for (uint16_t i = 0; i < 96; i++)
 					{
 						int16_t symb = s[(s_idx + i * 10) % LARGE_BUF_LEN];
-						if (abs(symb) > 10000)
+						if (abs(symb) > 5000) // hardcoded threshold
 							b = !b;
 
 						raw_packet[i / 8] |= (b << (7 - (i % 8)));
 					}
 
-					if (show_all || raw_packet[2] == 0x60)
+					// calculate CRC (it is unprotected by the RS code...)
+					uint8_t calc_crc = CRC8(0x07, 0x00, &raw_packet[3], 5);
+
+					// if CRC filtering is enabled and we just received a time packet - ignore it
+					if (crc_flt == 1 && raw_packet[2] == TIME_PACKET && raw_packet[11] != calc_crc)
+					{
+						skip_samples = 1;
+						skip_cnt = 0;
+						continue;
+					}
+
+					if (show_all_types || raw_packet[2] == TIME_PACKET)
 					{
 						// get local time
 						now = time(NULL);
@@ -152,12 +174,12 @@ int main(int argc, char *argv[])
 
 						// print type
 						printf(" ├ \033[93mType:\033[39m ");
-						if (raw_packet[2] == 0x60)
+						if (raw_packet[2] == TIME_PACKET)
 							printf("time\n");
 						else
-							printf("other\n");
+							printf("other (0x%02X)\n", raw_packet[2]);
 
-						if (raw_packet[2] == 0x60)
+						if (raw_packet[2] == TIME_PACKET)
 						{
 							// print raw contents
 							printf(" ├ \033[93mRaw data:\033[39m ");
@@ -267,7 +289,8 @@ int main(int argc, char *argv[])
 			else
 			{
 				skip_cnt++;
-				if (skip_cnt == 52 * 10) // skip 52 symbols (3.0-1.92=1.08; 1.08/0.02 is 54, we are adding some margin here)
+				// 3.0-1.92=1.08; 1.08/0.02 is 54, so we skip 52 symbols to end up right before the next syncword
+				if (skip_cnt == 52 * 10)
 				{
 					skip_cnt = 0;
 					skip_samples = 0;
