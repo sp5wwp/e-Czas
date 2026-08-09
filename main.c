@@ -13,7 +13,7 @@
 #include <io.h>
 #endif
 
-#define LARGE_BUF_LEN (12 * 8 * 10) // 12 bytes, 10 samples per bit (symbol)
+#define LARGE_BUF_LEN (12 * 8 * 10 + 5) // 12 bytes, 10 samples per bit (symbol), 5 extra samples for the correlator max search
 #define TIME_PACKET 0x60
 
 const int8_t sync[16] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1}; // sync symbol transitions
@@ -139,13 +139,39 @@ int main(int argc, char *argv[])
 				// detect the syncword, then check if the first symbol is a negative spike
 				if (corr > 80000 && *symbols[0] < -5000)
 				{
+					// look at a few samples ahead to find maximum correlation value
+					int32_t corr_max = corr;
+					uint8_t shift = 1;
+					uint8_t shift_max = 0;
+
+					for (; shift <= 5; shift++)
+					{
+						int32_t corr_s = 0;
+
+						for (uint16_t i = 0; i < 16; i++)
+						{
+							uint16_t idx = (symbols[i] - s + shift) % LARGE_BUF_LEN;
+							corr_s += s[idx] * sync[i];
+						}
+
+						if (corr_s > corr_max)
+						{
+							corr_max = corr_s;
+							shift_max = shift;
+						}
+						else
+						{
+							break;
+						}
+					}
+
 					// demodulate the signal
 					uint8_t b = 1;
 					memset(raw_packet, 0, sizeof(raw_packet));
 
 					for (uint16_t i = 0; i < 96; i++)
 					{
-						int16_t symb = s[(s_idx + i * 10) % LARGE_BUF_LEN];
+						int16_t symb = s[(s_idx + shift_max + i * 10) % LARGE_BUF_LEN];
 						if (abs(symb) > 5000) // hardcoded threshold
 							b = !b;
 
