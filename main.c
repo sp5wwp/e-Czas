@@ -135,9 +135,10 @@ int main(int argc, char *argv[])
 				for (uint16_t i = 0; i < 16; i++)
 					corr += *symbols[i] * sync[i];
 
-				// hardcoded threshold. TODO: base these values on std dev
+				// hardcoded symbol excursion threshold. TODO: base these values on std dev
+				const int32_t thresh = 5000;
 				// detect the syncword, then check if the first symbol is a negative spike
-				if (corr > 80000 && *symbols[0] < -5000)
+				if (corr > 16*thresh && *symbols[0] < -thresh)
 				{
 					// look at a few samples ahead to find maximum correlation value
 					int32_t corr_max = corr;
@@ -172,7 +173,7 @@ int main(int argc, char *argv[])
 					for (uint16_t i = 0; i < 96; i++)
 					{
 						int16_t symb = s[(s_idx + shift_max + i * 10) % LARGE_BUF_LEN];
-						if (abs(symb) > 5000) // hardcoded threshold
+						if (abs(symb) > thresh) // hardcoded threshold
 							b = !b;
 
 						raw_packet[i / 8] |= (b << (7 - (i % 8)));
