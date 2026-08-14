@@ -38,7 +38,7 @@ rs_t rs; // RS(15, 9) struct
 time_t now;
 struct tm *tm_now;
 
-uint8_t CRC8(const uint8_t poly, const uint8_t init, const uint8_t *in, const uint16_t len)
+uint8_t CRC8(uint8_t poly, uint8_t init, const uint8_t *in, uint16_t len)
 {
 	uint16_t crc = init; // init val
 
