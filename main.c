@@ -272,15 +272,17 @@ int main(int argc, char *argv[])
 							tmp = raw_timestamp[1];
 							raw_timestamp[1] = raw_timestamp[2];
 							raw_timestamp[2] = tmp;
+							uint32_t raw_t;
+							memcpy((uint8_t*)&raw_t, raw_timestamp, 4);
 
 							// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
 							uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
-							*((uint32_t *)raw_timestamp) *= 3;
-							*((uint32_t *)raw_timestamp) += 3600 * tz;
+							raw_t *= 3;
+							raw_t += 3600 * tz;
 
 							// print the timestamp
-							printf(" ├ \033[93mTimestamp:\033[39m %u\n", *((uint32_t *)raw_timestamp));
-							time_t eczas = epoch + *((uint32_t *)raw_timestamp);
+							printf(" ├ \033[93mTimestamp:\033[39m %u\n", raw_t);
+							time_t eczas = epoch + raw_t;
 
 							// print decoded time
 							printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
