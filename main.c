@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 				// hardcoded symbol excursion threshold. TODO: base these values on std dev
 				const int32_t thresh = 5000;
 				// detect the syncword, then check if the first symbol is a negative spike
-				if (corr > 16*thresh && *symbols[0] < -thresh)
+				if (corr > 16 * thresh && *symbols[0] < -thresh)
 				{
 					// look at a few samples ahead to find maximum correlation value
 					int32_t corr_max = corr;
@@ -254,26 +254,27 @@ int main(int argc, char *argv[])
 									   cword[10], cword[11], cword[12], cword[13], cword[14]);
 							}
 
-							// descramble contents (raw_packet[] is not raw anymore :)
+							// put the corrected data back (raw_packet[] is not raw anymore :)
+							// TODO: there is something wrong with the RS decoder and applying this causes some timestamps to be off
+							/*uint8_t upper = raw_packet[3] & 0xE0; // 3 unprotected bits (start)
+							uint8_t lower = raw_packet[7] & 0x01; // 1 unprotected bit (end)
+
+							raw_packet[3] = upper | (cword[0] << 1) | (cword[1] >> 3);
+							raw_packet[4] = ((cword[1] & 0x07) << 5) | (cword[2] << 1) | (cword[3] >> 3);
+							raw_packet[5] = ((cword[3] & 0x07) << 5) | (cword[4] << 1) | (cword[5] >> 3);
+							raw_packet[6] = ((cword[5] & 0x07) << 5) | (cword[6] << 1) | (cword[7] >> 3);
+							raw_packet[7] = ((cword[7] & 0x07) << 5) | (cword[8] << 1) | lower;*/
+
+							// descramble contents
 							for (uint8_t i = 0; i < 5; i++)
 								raw_packet[3 + i] ^= scram[i];
 
-							// extract the 30-bit timestamp into a 4-byte array
-							uint8_t raw_timestamp[4] = {((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7),
-														(raw_packet[4] << 1) | (raw_packet[5] >> 7),
-														(raw_packet[5] << 1) | (raw_packet[6] >> 7),
-														(raw_packet[6] << 1) | (raw_packet[7] >> 7)};
-
-							// endianness swap
-							uint8_t tmp;
-							tmp = raw_timestamp[0];
-							raw_timestamp[0] = raw_timestamp[3];
-							raw_timestamp[3] = tmp;
-							tmp = raw_timestamp[1];
-							raw_timestamp[1] = raw_timestamp[2];
-							raw_timestamp[2] = tmp;
-							uint32_t raw_t;
-							memcpy((uint8_t*)&raw_t, raw_timestamp, 4);
+							// extract the 30-bit timestamp
+							uint32_t raw_t =
+								((uint32_t)(((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7)) << 24) |
+								((uint32_t)(((raw_packet[4] << 1) | (raw_packet[5] >> 7)) & 0xFF) << 16) |
+								((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8) |
+								(uint32_t)(((raw_packet[6] << 1) | (raw_packet[7] >> 7)) & 0xFF);
 
 							// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
 							uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
@@ -285,13 +286,14 @@ int main(int argc, char *argv[])
 							time_t eczas = epoch + raw_t;
 
 							// print decoded time
+							struct tm *gt = gmtime(&eczas);
 							printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
-								   gmtime(&eczas)->tm_year + 1900,
-								   gmtime(&eczas)->tm_mon + 1,
-								   gmtime(&eczas)->tm_mday,
-								   gmtime(&eczas)->tm_hour,
-								   gmtime(&eczas)->tm_min,
-								   gmtime(&eczas)->tm_sec,
+								   gt->tm_year + 1900,
+								   gt->tm_mon + 1,
+								   gt->tm_mday,
+								   gt->tm_hour,
+								   gt->tm_min,
+								   gt->tm_sec,
 								   tz);
 
 							// print CRC
