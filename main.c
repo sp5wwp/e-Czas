@@ -179,18 +179,23 @@ int main(int argc, char *argv[])
 						raw_packet[i / 8] |= (b << (7 - (i % 8)));
 					}
 
+					// retrieve data
+					uint8_t packet_type = raw_packet[2];
+					uint8_t *data_start = &raw_packet[3];
+					uint8_t rcv_crc = raw_packet[11];
+
 					// calculate CRC (it is unprotected by the RS code...)
-					uint8_t calc_crc = CRC8(0x07, 0x00, &raw_packet[3], 5);
+					uint8_t calc_crc = CRC8(0x07, 0x00, data_start, 5);
 
 					// if CRC filtering is enabled and we just received a time packet - ignore it
-					if (crc_flt == 1 && raw_packet[2] == TIME_PACKET && raw_packet[11] != calc_crc)
+					if (crc_flt == 1 && packet_type == TIME_PACKET && rcv_crc != calc_crc)
 					{
 						skip_samples = 1;
 						skip_cnt = 0;
 						continue;
 					}
 
-					if (show_all_types || raw_packet[2] == TIME_PACKET)
+					if (show_all_types || packet_type == TIME_PACKET)
 					{
 						// get local time
 						now = time(NULL);
@@ -201,21 +206,18 @@ int main(int argc, char *argv[])
 
 						// print type
 						printf(" ├ \033[93mType:\033[39m ");
-						if (raw_packet[2] == TIME_PACKET)
+						if (packet_type == TIME_PACKET)
 							printf("time\n");
 						else
-							printf("other (0x%02X)\n", raw_packet[2]);
+							printf("other (0x%02X)\n", packet_type);
 
-						if (raw_packet[2] == TIME_PACKET)
+						if (packet_type == TIME_PACKET)
 						{
 							// print raw contents
 							printf(" ├ \033[93mRaw data:\033[39m ");
 							for (uint8_t i = 0; i < 12; i++)
 								printf("%02X ", raw_packet[i]);
 							printf("\n");
-
-							// calculate CRC
-							uint8_t calc_crc = CRC8(0x07, 0x00, &raw_packet[3], 5);
 
 							// extract RS(15, 9) codeword
 							uint8_t cword[15] =
@@ -298,7 +300,7 @@ int main(int argc, char *argv[])
 
 							// print CRC
 							printf(" └ \033[93mCRC:\033[39m");
-							if (raw_packet[11] == calc_crc)
+							if (rcv_crc == calc_crc)
 								printf(" \033[92mmatch\033[39m\n");
 							else
 								printf(" \033[91mmismatch\033[39m\n");
