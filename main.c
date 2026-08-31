@@ -39,8 +39,6 @@ typedef struct
 {
 	time_t timestamp;
 	uint8_t tz;
-	uint8_t rcv_crc;
-	uint8_t calc_crc;
 } pcsk_packet_t;
 
 uint8_t show_all_types = 0; // show all frame types (1) or time sync only (0)
@@ -89,8 +87,6 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 	// calculate CRC (it is unprotected by the RS code...) and extract the received one
 	uint8_t calc_crc = CRC8(0x07, 0x00, data_start, 5);
 	uint8_t rcv_crc = raw_packet[11];
-	pkt->rcv_crc = rcv_crc;
-	pkt->calc_crc = calc_crc;
 
 	// check if CRC matches
 	if (calc_crc == rcv_crc)
@@ -116,7 +112,7 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 
 		return PCSK_DEC_CRC_OK;
 	}
-	else // if not, try applyting RS codes
+	else // if not, try applying RS codes
 	{
 		// descramble contents
 		for (uint8_t i = 0; i < 5; i++)
@@ -352,39 +348,36 @@ int main(int argc, char *argv[])
 						printf(" ├ \033[93mType:\033[39m ");
 						printf("time\n");
 
-						// if (packet_type == TIME_PACKET)
+						// print contents
+						printf(" ├ \033[93mRaw data:\033[39m ");
+						for (uint8_t i = 0; i < 12; i++)
+							printf("%02X ", raw_packet[i]);
+						printf("\n");
+
+						// print the raw timestamp
+						printf(" ├ \033[93mTimestamp:\033[39m %lld\n", dec_packet.timestamp - epoch);
+
+						// print decoded time
+						struct tm *gt = gmtime(&dec_packet.timestamp);
+						printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
+							   gt->tm_year + 1900,
+							   gt->tm_mon + 1,
+							   gt->tm_mday,
+							   gt->tm_hour,
+							   gt->tm_min,
+							   gt->tm_sec,
+							   dec_packet.tz);
+
+						// print CRC check
+						if (pcsk_res == PCSK_DEC_CRC_OK)
 						{
-							// print contents
-							printf(" ├ \033[93mRaw data:\033[39m ");
-							for (uint8_t i = 0; i < 12; i++)
-								printf("%02X ", raw_packet[i]);
-							printf("\n");
+							printf(" └ \033[93mCRC:\033[39m \033[92mmatch\033[39m\n");
+						}
 
-							// print the raw timestamp
-							printf(" ├ \033[93mTimestamp:\033[39m %lld\n", dec_packet.timestamp - epoch);
-
-							// print decoded time
-							struct tm *gt = gmtime(&dec_packet.timestamp);
-							printf(" ├ \033[93mDecoded:\033[39m %04d-%02d-%02d %02d:%02d:%02d (UTC+%d)\n",
-								   gt->tm_year + 1900,
-								   gt->tm_mon + 1,
-								   gt->tm_mday,
-								   gt->tm_hour,
-								   gt->tm_min,
-								   gt->tm_sec,
-								   dec_packet.tz);
-
-							// print CRC check
-							if (pcsk_res == PCSK_DEC_CRC_OK)
-							{
-								printf(" └ \033[93mCRC:\033[39m \033[92mmatch\033[39m\n");
-							}
-
-							// print post-RS CRC check
-							if (pcsk_res == PCSK_DEC_RS_OK)
-							{
-								printf(" └ \033[93mPost-RS CRC:\033[39m \033[92mmatch\033[39m\n");
-							}
+						// print post-RS CRC check
+						if (pcsk_res == PCSK_DEC_RS_OK)
+						{
+							printf(" └ \033[93mPost-RS CRC:\033[39m \033[92mmatch\033[39m\n");
 						}
 					}
 					else // uncorrectable data or an unknown packet type
