@@ -99,8 +99,8 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 		uint32_t raw_t =
 			((uint32_t)(((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7)) << 24) |
 			((uint32_t)(((raw_packet[4] << 1) | (raw_packet[5] >> 7)) & 0xFF) << 16) |
-			((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8) |
-			(uint32_t)(((raw_packet[6] << 1) | (raw_packet[7] >> 7)) & 0xFF);
+			((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8)  |
+			(uint32_t)(((raw_packet[6] << 1)  | (raw_packet[7] >> 7)) & 0xFF);
 
 		// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
 		uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
@@ -137,19 +137,19 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 		// dump RS symbols
 		/*if (dump_rs)
 		{
-			printf(" ├ \033[93mReceived RS symbols:\033[39m  %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+			printf(" ├ \033[93mReceived RS symbols:\033[39m  %02u %02u %02u %02u %02u %02u %02u %02u %02u | %02u %02u %02u %02u %02u %02u\n",
 				   cword[0], cword[1], cword[2], cword[3], cword[4],
 				   cword[5], cword[6], cword[7], cword[8], cword[9],
 				   cword[10], cword[11], cword[12], cword[13], cword[14]);
 		}*/
 
 		// apply error correction (it overwrites the buffer)
-		rs_status_t rs_res = decode_RS(&rs, (int8_t *)cword);
+		rs_status_t rs_res = decode_RS(&rs, cword);
 
 		// dump RS symbols again
 		/*if (dump_rs)
 		{
-			printf(" ├ \033[93mCorrected RS symbols:\033[39m %02d %02d %02d %02d %02d %02d %02d %02d %02d | %02d %02d %02d %02d %02d %02d\n",
+			printf(" ├ \033[93mCorrected RS symbols:\033[39m %02u %02u %02u %02u %02u %02u %02u %02u %02u | %02u %02u %02u %02u %02u %02u\n",
 				   cword[0], cword[1], cword[2], cword[3], cword[4],
 				   cword[5], cword[6], cword[7], cword[8], cword[9],
 				   cword[10], cword[11], cword[12], cword[13], cword[14]);
@@ -162,7 +162,7 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 			uint8_t upper = raw_packet[3] & 0xE0; // 3 unprotected bits (start)
 			uint8_t lower = raw_packet[7] & 0x01; // 1 unprotected bit (end)
 
-			raw_packet[3] = upper | (cword[0] << 1) | (cword[1] >> 3);
+			raw_packet[3] = upper | (cword[0] << 1)  | (cword[1] >> 3);
 			raw_packet[4] = ((cword[1] & 0x07) << 5) | (cword[2] << 1) | (cword[3] >> 3);
 			raw_packet[5] = ((cword[3] & 0x07) << 5) | (cword[4] << 1) | (cword[5] >> 3);
 			raw_packet[6] = ((cword[5] & 0x07) << 5) | (cword[6] << 1) | (cword[7] >> 3);
@@ -176,8 +176,8 @@ decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
 			uint32_t raw_t =
 				((uint32_t)(((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7)) << 24) |
 				((uint32_t)(((raw_packet[4] << 1) | (raw_packet[5] >> 7)) & 0xFF) << 16) |
-				((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8) |
-				(uint32_t)(((raw_packet[6] << 1) | (raw_packet[7] >> 7)) & 0xFF);
+				((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8)  |
+				(uint32_t)(((raw_packet[6] << 1)  | (raw_packet[7] >> 7)) & 0xFF);
 
 			// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
 			const uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
@@ -245,7 +245,12 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	init_RS(&rs, 15, 9, (uint8_t *)rs_poly);
+	rs_init_t rv = init_RS(&rs, 15, 9, (uint8_t *)rs_poly);
+	if (rv != RS_INIT_OK)
+	{
+		printf("\033[95mERROR:\033[39m Can not initialize Reed-Solomon decoder (err:%u).\n", rv);
+		return 1;
+	}
 
 	for (uint8_t i = 0; i < 16; i++)
 		symbols[i] = &s[i * 10];
