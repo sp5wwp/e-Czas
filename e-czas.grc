@@ -1,29 +1,25 @@
 options:
   parameters:
+    alias: ''
     author: Wojciech Kaczmarski SP5WWP
     catch_exceptions: 'True'
-    category: '[GRC Hier Blocks]'
-    cmake_opt: ''
     comment: ''
     copyright: ''
     description: ''
-    gen_cmake: 'On'
     gen_linking: dynamic
     generate_options: qt_gui
+    generator_class_name: PythonQtGuiGenerator
+    generator_module: gnuradio.grc.workflows.python_qt_gui
     hier_block_src_path: '.:'
     id: eczas
     max_nouts: '0'
     output_language: python
-    placement: (0,0)
     qt_qss_theme: ''
     realtime_scheduling: ''
     run: 'True'
     run_command: '{python} -u {filename}'
-    run_options: prompt
-    sizing_mode: fixed
     thread_safe_setters: ''
     title: e-Czas signal processor
-    window_size: (1000,1000)
   states:
     bus_sink: false
     bus_source: false
@@ -42,19 +38,19 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [304, 12.0]
+    coordinate: [264, 8.0]
     rotation: 0
     state: enabled
 - name: deviation
   id: variable
   parameters:
     comment: ''
-    value: '10.0'
+    value: 36/(360*0.019)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [384, 12.0]
+    coordinate: [336, 8.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -66,7 +62,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [200, 12]
+    coordinate: [176, 8.0]
     rotation: 0
     state: enabled
 - name: analog_agc2_xx_0
@@ -87,7 +83,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [432, 252.0]
+    coordinate: [448, 256.0]
     rotation: 0
     state: enabled
 - name: analog_quadrature_demod_cf_0
@@ -103,7 +99,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [920, 284.0]
+    coordinate: [936, 288.0]
     rotation: 0
     state: enabled
 - name: audio_source_0
@@ -122,7 +118,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [16, 276.0]
+    coordinate: [8, 280.0]
     rotation: 0
     state: disabled
 - name: band_pass_filter_0
@@ -147,7 +143,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 228.0]
+    coordinate: [280, 236.0]
     rotation: 0
     state: enabled
 - name: band_pass_filter_0_0
@@ -172,7 +168,27 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [600, 228.0]
+    coordinate: [608, 236.0]
+    rotation: 0
+    state: enabled
+- name: blocks_delay_0
+  id: blocks_delay
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    delay: int(samp_rate/10/2)
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_ports: '1'
+    showports: 'False'
+    type: float
+    vlen: '1'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1136, 288.0]
     rotation: 0
     state: enabled
 - name: blocks_file_sink_0
@@ -190,7 +206,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1528, 52.0]
+    coordinate: [1576, 8.0]
     rotation: 0
     state: enabled
 - name: blocks_float_to_short_0
@@ -207,8 +223,8 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1384, 68.0]
-    rotation: 0
+    coordinate: [1488.0, 104]
+    rotation: 90
     state: enabled
 - name: blocks_moving_average_xx_0
   id: blocks_moving_average_xx
@@ -227,7 +243,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1072, 364.0]
+    coordinate: [1104, 352.0]
     rotation: 0
     state: enabled
 - name: blocks_sub_xx_0
@@ -245,7 +261,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1240, 288.0]
+    coordinate: [1264, 296.0]
     rotation: 0
     state: enabled
 - name: blocks_throttle2_0
@@ -266,7 +282,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [172.0, 368]
+    coordinate: [192.0, 368]
     rotation: 90
     state: bypassed
 - name: blocks_wavfile_sink_0_0
@@ -288,7 +304,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1520, 172.0]
+    coordinate: [1576, 168.0]
     rotation: 0
     state: disabled
 - name: blocks_wavfile_source_0
@@ -297,7 +313,7 @@ blocks:
     affinity: ''
     alias: ''
     comment: ''
-    file: 224k_1836.wav
+    file: samples/224k_1836.wav
     maxoutbuf: '0'
     minoutbuf: '0'
     nchan: '1'
@@ -306,7 +322,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [24, 516.0]
+    coordinate: [8, 512.0]
     rotation: 0
     state: enabled
 - name: hilbert_fc_0
@@ -318,13 +334,13 @@ blocks:
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    num_taps: '401'
+    num_taps: '101'
     win: window.WIN_HAMMING
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [784, 284.0]
+    coordinate: [808, 288.0]
     rotation: 0
     state: enabled
 - name: import_0
@@ -337,7 +353,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 116.0]
+    coordinate: [8, 128.0]
     rotation: 0
     state: enabled
 - name: low_pass_filter_0
@@ -361,7 +377,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1344, 252.0]
+    coordinate: [1368, 264.0]
     rotation: 0
     state: enabled
 - name: qtgui_freq_sink_x_0
@@ -442,7 +458,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 116.0]
+    coordinate: [808, 112.0]
     rotation: 0
     state: disabled
 - name: qtgui_tab_widget
@@ -476,7 +492,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [480, 12.0]
+    coordinate: [432, 8.0]
     rotation: 0
     state: true
 - name: qtgui_time_sink_x_0
@@ -573,7 +589,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [256, 140.0]
+    coordinate: [280, 136.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_0_0
@@ -670,7 +686,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 36.0]
+    coordinate: [808, 24.0]
     rotation: 0
     state: enabled
 - name: qtgui_time_sink_x_1_0
@@ -742,8 +758,8 @@ blocks:
     style8: '1'
     style9: '1'
     tr_chan: '0'
-    tr_delay: '0'
-    tr_level: '-0.35'
+    tr_delay: 0.0005*500
+    tr_level: '-0.5'
     tr_mode: qtgui.TRIG_MODE_NORM
     tr_slope: qtgui.TRIG_SLOPE_NEG
     tr_tag: '""'
@@ -760,14 +776,14 @@ blocks:
     width8: '1'
     width9: '1'
     ylabel: Amplitude
-    ymax: '1'
-    ymin: '-1'
+    ymax: '2'
+    ymin: '-2'
     yunit: '""'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1520, 284.0]
+    coordinate: [1576, 288.0]
     rotation: 0
     state: enabled
 - name: qtgui_waterfall_sink_x_0
@@ -828,14 +844,14 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 196.0]
+    coordinate: [808, 200.0]
     rotation: 0
     state: disabled
 
 connections:
 - [analog_agc2_xx_0, '0', band_pass_filter_0_0, '0']
+- [analog_quadrature_demod_cf_0, '0', blocks_delay_0, '0']
 - [analog_quadrature_demod_cf_0, '0', blocks_moving_average_xx_0, '0']
-- [analog_quadrature_demod_cf_0, '0', blocks_sub_xx_0, '0']
 - [audio_source_0, '0', band_pass_filter_0, '0']
 - [audio_source_0, '0', qtgui_time_sink_x_0, '0']
 - [band_pass_filter_0, '0', analog_agc2_xx_0, '0']
@@ -843,6 +859,7 @@ connections:
 - [band_pass_filter_0_0, '0', qtgui_freq_sink_x_0, '0']
 - [band_pass_filter_0_0, '0', qtgui_time_sink_x_0_0, '0']
 - [band_pass_filter_0_0, '0', qtgui_waterfall_sink_x_0, '0']
+- [blocks_delay_0, '0', blocks_sub_xx_0, '0']
 - [blocks_float_to_short_0, '0', blocks_file_sink_0, '0']
 - [blocks_moving_average_xx_0, '0', blocks_sub_xx_0, '1']
 - [blocks_sub_xx_0, '0', low_pass_filter_0, '0']
@@ -856,4 +873,4 @@ connections:
 
 metadata:
   file_format: 1
-  grc_version: 3.10.7.0
+  grc_version: 3.10.12.0

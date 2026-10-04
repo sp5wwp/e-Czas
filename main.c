@@ -72,143 +72,58 @@ uint8_t CRC8(uint8_t poly, uint8_t init, const uint8_t *in, uint16_t len)
 	return crc & 0xFF;
 }
 
-decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw_packet[12])
+static uint32_t extract_raw_time(const uint8_t *p, uint8_t *tz)
 {
-	// don't do anything if the packet does not contain any time data
-	uint8_t pkt_type = raw_packet[2];
-	if (pkt_type != TIME_PACKET)
-	{
+	*tz = ((p[7] >> 4) & 2) | ((p[7] >> 6) & 1);
+	return ((uint32_t)(((p[3] << 1) & 0x3F) | (p[4] >> 7)) << 24) |
+		   ((uint32_t)(((p[4] << 1) | (p[5] >> 7)) & 0xFF) << 16) |
+		   ((uint32_t)(((p[5] << 1) | (p[6] >> 7)) & 0xFF) << 8) |
+		   (uint32_t)(((p[6] << 1) | (p[7] >> 7)) & 0xFF);
+}
+
+decode_status_t pcsk_decode(pcsk_packet_t *pkt, uint8_t raw[12])
+{
+	if (raw[2] != TIME_PACKET)
 		return PCSK_UNK_PACKET;
-	}
 
-	// grab the data start address
-	uint8_t *data_start = &raw_packet[3];
+	uint8_t *data = &raw[3];
+	decode_status_t status = PCSK_DEC_CRC_OK;
 
-	// calculate CRC (it is unprotected by the RS code...) and extract the received one
-	uint8_t calc_crc = CRC8(0x07, 0x00, data_start, 5);
-	uint8_t rcv_crc = raw_packet[11];
-
-	// check if CRC matches
-	if (calc_crc == rcv_crc)
+	// CRC and RS both operate on the *scrambled* (on-air) bytes
+	if (CRC8(0x07, 0x00, data, 5) != raw[11])
 	{
-		// descramble contents
-		for (uint8_t i = 0; i < 5; i++)
-			data_start[i] ^= scram[i];
+		uint8_t cw[15] = {
+			(raw[3] >> 1) & 0xF, ((raw[4] >> 5) & 0x7) | ((raw[3] & 1) << 3),
+			(raw[4] >> 1) & 0xF, ((raw[5] >> 5) & 0x7) | ((raw[4] & 1) << 3),
+			(raw[5] >> 1) & 0xF, ((raw[6] >> 5) & 0x7) | ((raw[5] & 1) << 3),
+			(raw[6] >> 1) & 0xF, ((raw[7] >> 5) & 0x7) | ((raw[6] & 1) << 3),
+			(raw[7] >> 1) & 0xF,
+			raw[8] >> 4, raw[8] & 0xF, raw[9] >> 4, raw[9] & 0xF, raw[10] >> 4, raw[10] & 0xF};
 
-		// extract the 30-bit timestamp
-		uint32_t raw_t =
-			((uint32_t)(((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7)) << 24) |
-			((uint32_t)(((raw_packet[4] << 1) | (raw_packet[5] >> 7)) & 0xFF) << 16) |
-			((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8)  |
-			(uint32_t)(((raw_packet[6] << 1)  | (raw_packet[7] >> 7)) & 0xFF);
-
-		// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
-		uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
-		raw_t *= 3;
-		raw_t += 3600 * tz;
-
-		pkt->timestamp = epoch + raw_t;
-		pkt->tz = tz;
-
-		return PCSK_DEC_CRC_OK;
-	}
-	else // if not, try applying RS codes
-	{
-		// descramble contents
-		for (uint8_t i = 0; i < 5; i++)
-			data_start[i] ^= scram[i];
-
-		// extract RS(15, 9) codeword
-		uint8_t cword[15] =
-			{
-				(raw_packet[3] >> 1) & 0xF,
-				((raw_packet[4] >> 5) & 0x7) | ((raw_packet[3] & 1) << 3),
-				(raw_packet[4] >> 1) & 0xF,
-				((raw_packet[5] >> 5) & 0x7) | ((raw_packet[4] & 1) << 3),
-				(raw_packet[5] >> 1) & 0xF,
-				((raw_packet[6] >> 5) & 0x7) | ((raw_packet[5] & 1) << 3),
-				(raw_packet[6] >> 1) & 0xF,
-				((raw_packet[7] >> 5) & 0x7) | ((raw_packet[6] & 1) << 3),
-				(raw_packet[7] >> 1) & 0xF,
-				(raw_packet[8] >> 4) & 0xF, raw_packet[8] & 0xF,
-				(raw_packet[9] >> 4) & 0xF, raw_packet[9] & 0xF,
-				(raw_packet[10] >> 4) & 0xF, raw_packet[10] & 0xF};
-
-		// dump RS symbols
-		/*if (dump_rs)
-		{
-			printf(" ├ \033[93mReceived RS symbols:\033[39m  %02u %02u %02u %02u %02u %02u %02u %02u %02u | %02u %02u %02u %02u %02u %02u\n",
-				   cword[0], cword[1], cword[2], cword[3], cword[4],
-				   cword[5], cword[6], cword[7], cword[8], cword[9],
-				   cword[10], cword[11], cword[12], cword[13], cword[14]);
-		}*/
-
-		// apply error correction (it overwrites the buffer)
-		rs_status_t rs_res = decode_RS(&rs, cword);
-
-		// dump RS symbols again
-		/*if (dump_rs)
-		{
-			printf(" ├ \033[93mCorrected RS symbols:\033[39m %02u %02u %02u %02u %02u %02u %02u %02u %02u | %02u %02u %02u %02u %02u %02u\n",
-				   cword[0], cword[1], cword[2], cword[3], cword[4],
-				   cword[5], cword[6], cword[7], cword[8], cword[9],
-				   cword[10], cword[11], cword[12], cword[13], cword[14]);
-		}*/
-
-		// check if RS decoder reports a successful decode
-		if (rs_res == RS_NO_ERROR || rs_res == RS_CORRECTED)
-		{
-			// pack back all the corrected bits
-			uint8_t upper = raw_packet[3] & 0xE0; // 3 unprotected bits (start)
-			uint8_t lower = raw_packet[7] & 0x01; // 1 unprotected bit (end)
-
-			raw_packet[3] = upper | (cword[0] << 1)  | (cword[1] >> 3);
-			raw_packet[4] = ((cword[1] & 0x07) << 5) | (cword[2] << 1) | (cword[3] >> 3);
-			raw_packet[5] = ((cword[3] & 0x07) << 5) | (cword[4] << 1) | (cword[5] >> 3);
-			raw_packet[6] = ((cword[5] & 0x07) << 5) | (cword[6] << 1) | (cword[7] >> 3);
-			raw_packet[7] = ((cword[7] & 0x07) << 5) | (cword[8] << 1) | lower;
-
-			// descramble contents
-			for (uint8_t i = 0; i < 5; i++)
-				data_start[i] ^= scram[i];
-
-			// extract the 30-bit timestamp
-			uint32_t raw_t =
-				((uint32_t)(((raw_packet[3] << 1) & 0x3F) | (raw_packet[4] >> 7)) << 24) |
-				((uint32_t)(((raw_packet[4] << 1) | (raw_packet[5] >> 7)) & 0xFF) << 16) |
-				((uint32_t)(((raw_packet[5] << 1) | (raw_packet[6] >> 7)) & 0xFF) << 8)  |
-				(uint32_t)(((raw_packet[6] << 1)  | (raw_packet[7] >> 7)) & 0xFF);
-
-			// convert the timestamp into seconds since 01-01-2000 (each tick is 3s)
-			const uint8_t tz = ((raw_packet[7] >> 4) & 2) | ((raw_packet[7] >> 6) & 1);
-			raw_t *= 3;
-			raw_t += 3600 * tz;
-
-			// rescramble contents for a final CRC check
-			for (uint8_t i = 0; i < 5; i++)
-				data_start[i] ^= scram[i];
-
-			// calculate CRC
-			calc_crc = CRC8(0x07, 0x00, data_start, 5);
-			rcv_crc = raw_packet[11];
-
-			// compare CRC and return data if valid
-			if (calc_crc == rcv_crc)
-			{
-				pkt->timestamp = epoch + raw_t;
-				pkt->tz = tz;
-				return PCSK_DEC_RS_OK;
-			}
-			else // CRC mismatch after attempted RS codeword correction
-			{
-				return PCSK_DEC_FAILED;
-			}
-		}
-		else // uncorrectable errors
-		{
+		rs_status_t r = decode_RS(&rs, cw);
+		if (r != RS_NO_ERROR && r != RS_CORRECTED)
 			return PCSK_DEC_FAILED;
-		}
+
+		uint8_t upper = raw[3] & 0xE0, lower = raw[7] & 0x01;
+		raw[3] = upper | (cw[0] << 1) | (cw[1] >> 3);
+		raw[4] = ((cw[1] & 7) << 5) | (cw[2] << 1) | (cw[3] >> 3);
+		raw[5] = ((cw[3] & 7) << 5) | (cw[4] << 1) | (cw[5] >> 3);
+		raw[6] = ((cw[5] & 7) << 5) | (cw[6] << 1) | (cw[7] >> 3);
+		raw[7] = ((cw[7] & 7) << 5) | (cw[8] << 1) | lower;
+
+		if (CRC8(0x07, 0x00, data, 5) != raw[11])
+			return PCSK_DEC_FAILED;
+		status = PCSK_DEC_RS_OK;
 	}
+
+	for (uint8_t i = 0; i < 5; i++)
+		data[i] ^= scram[i];
+
+	uint8_t tz;
+	uint32_t raw_t = extract_raw_time(raw, &tz) * 3;
+	pkt->timestamp = (time_t)epoch + raw_t + 3600 * tz;
+	pkt->tz = tz;
+	return status;
 }
 
 int main(int argc, char *argv[])
@@ -296,16 +211,15 @@ int main(int argc, char *argv[])
 					corr += *symbols[i] * sync[i];
 
 				// hardcoded symbol excursion threshold. TODO: base these values on std dev
-				const int32_t thresh = 5000;
+				const int32_t thresh = 16000;
 				// detect the syncword, then check if the first symbol is a negative spike
 				if (corr > 16 * thresh && *symbols[0] < -thresh)
 				{
 					// look at a few samples ahead to find maximum correlation value
 					int32_t corr_max = corr;
-					uint8_t shift = 1;
 					uint8_t shift_max = 0;
 
-					for (; shift <= 5; shift++)
+					for (uint8_t shift = 1; shift <= 5; shift++)
 					{
 						int32_t corr_s = 0;
 
@@ -360,7 +274,7 @@ int main(int argc, char *argv[])
 						printf("\n");
 
 						// print the raw timestamp
-						printf(" ├ \033[93mTimestamp:\033[39m %lld\n", dec_packet.timestamp - epoch);
+						printf(" ├ \033[93mTimestamp:\033[39m %lld\n", (long long)(dec_packet.timestamp - epoch));
 
 						// print decoded time
 						struct tm *gt = gmtime(&dec_packet.timestamp);
