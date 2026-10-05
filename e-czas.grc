@@ -217,7 +217,7 @@ blocks:
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
-    scale: '32767.0'
+    scale: (2**14)
     vlen: '1'
   states:
     bus_sink: false

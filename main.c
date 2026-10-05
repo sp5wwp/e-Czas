@@ -16,6 +16,8 @@
 #define PACKET_LEN 96						// packet length in bits
 #define LARGE_BUF_LEN (PACKET_LEN * 10 + 5) // 96 bits, 10 samples per bit (symbol), 5 extra samples for the correlator max search
 #define TIME_PACKET 0x60
+#define SKIP_CONFIRMED (1500 - 50) // syncword sliced correctly - skip to just before the next 3s slot (margin covers clock error and jitter)
+#define SKIP_UNCONFIRMED 20		   // possible false trigger - only step past the current correlation peak
 
 const int8_t sync[16] = {-1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1}; // sync symbol transitions
 
@@ -24,6 +26,7 @@ uint16_t s_idx;			  // circular buffer index
 int16_t *symbols[16];
 uint8_t skip_samples;
 uint16_t skip_cnt;
+uint16_t skip_len;
 
 uint8_t raw_packet[PACKET_LEN / 8];
 
@@ -210,8 +213,8 @@ int main(int argc, char *argv[])
 				for (uint16_t i = 0; i < 16; i++)
 					corr += *symbols[i] * sync[i];
 
-				// hardcoded symbol excursion threshold. TODO: base these values on std dev
-				const int32_t thresh = 16000;
+				// hardcoded symbol excursion threshold. this is half of the symbol deviation (+/-1.0 at +/-16,384)
+				const int32_t thresh = 8192;
 				// detect the syncword, then check if the first symbol is a negative spike
 				if (corr > 16 * thresh && *symbols[0] < -thresh)
 				{
@@ -315,6 +318,10 @@ int main(int argc, char *argv[])
 						}
 					}
 
+					// skip a whole slot only if the frame is confirmed by its syncword,
+					// so that a false trigger does not blind the decoder to the next real frame
+					uint8_t sync_ok = (raw_packet[0] == 0x55 && raw_packet[1] == 0x55);
+					skip_len = sync_ok ? SKIP_CONFIRMED : SKIP_UNCONFIRMED;
 					skip_samples = 1;
 					skip_cnt = 0;
 				}
@@ -322,8 +329,9 @@ int main(int argc, char *argv[])
 			else
 			{
 				skip_cnt++;
-				// 3.0-1.92=1.08; 1.08/0.02 is 54, so we skip 52 symbols to end up right before the next syncword
-				if (skip_cnt == 52 * 10)
+				// frames start every 3s (1500 samples) and the correlator looks at the oldest
+				// samples in the buffer, so the skip is counted from the current frame's start
+				if (skip_cnt >= skip_len)
 				{
 					skip_cnt = 0;
 					skip_samples = 0;
