@@ -14,7 +14,7 @@ The detected frame contains 96 bits of data:
 - 8-bit CRC value calculated for the raw 5-byte payload, starting at the 4th byte
 
 ## Decoder path
-The decoder first runs a data integrity check against the received data using the CRC field. If the received frame passes the check, packet contents are considered valid and the `pcsk_packet_t` struct is filled. In other case, the data is passed to a Reed-Solomon decoder and after a plausible decode (i.e. if a potentially valid codeword is found) a final CRC check is performed. If the CRC is valid, the struct is filled with corrected data, otherwise the packet data is discarded.
+The decoder first runs a data integrity check against the received data using the CRC field. If the received frame passes the check, packet contents are considered valid and the `pcsk_packet_t` struct is filled. Otherwise, the data is passed to a Reed-Solomon decoder and after a plausible decode (i.e. if a potentially valid codeword is found) a final CRC check is performed. If the CRC is valid, the struct is filled with corrected data, otherwise the packet data is discarded.
 
 Since the PCSK225 signal's packet structure has major design flaws, Reed-Solomon codes are rendered virtually useless. This could have been avoided if the CRC value was covered by the error-correcting code.
 
@@ -34,5 +34,5 @@ After starting the flowgraph, run
 ```
 
 ## Decoder preview
-Running the decoder with the supplied GNU Radio flowgraph should give similar result:
+Running the decoder with the supplied GNU Radio flowgraph should give a similar result:
 ![CLI decoder](./term.png)
